@@ -4,7 +4,6 @@
 # fact.
 decorator < 5.0
 click
-dataclasses==0.6
 h5py
 jsonschema
 matplotlib

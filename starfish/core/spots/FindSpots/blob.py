@@ -73,11 +73,11 @@ class BlobDetector(FindSpotsAlgorithm):
             self,
             min_sigma: Union[Number, Tuple[Number, ...]],
             max_sigma: Union[Number, Tuple[Number, ...]],
-            num_sigma: int,
             threshold: Number,
             overlap: float = 0.5,
             measurement_type='max',
             is_volume: bool = True,
+            num_sigma: Optional[int]=10,
             detector_method: str = 'blob_log',
             exclude_border: Optional[bool] = False,
     ) -> None:
@@ -118,12 +118,17 @@ class BlobDetector(FindSpotsAlgorithm):
             "min_sigma": self.min_sigma,
             "max_sigma": self.max_sigma,
             "threshold": self.threshold,
-            "exclude_border": self.exclude_border,
             "overlap": self.overlap,
             "num_sigma": self.num_sigma
         }
         if self.detector_method is not blob_doh:
             spot_finding_args["exclude_border"] = self.exclude_border
+
+        if self.detector_method is blob_dog:
+            del spot_finding_args["num_sigma"]
+
+        if self.detector_method is blob_doh:
+            data_image = data_image.astype("float64")
 
         fitted_blobs_array: np.ndarray = self.detector_method(
             data_image,
@@ -136,12 +141,25 @@ class BlobDetector(FindSpotsAlgorithm):
             return PerImageSliceSpotResults(spot_attrs=empty_spot_attrs, extras=None)
 
         # measure intensities
-        z_inds = fitted_blobs_array[:, 0].astype(int)
-        y_inds = fitted_blobs_array[:, 1].astype(int)
-        x_inds = fitted_blobs_array[:, 2].astype(int)
-        radius = np.round(fitted_blobs_array[:, 3] * np.sqrt(3))
         data_image = np.asarray(data_image)
-        intensities = data_image[tuple([z_inds, y_inds, x_inds])]
+        if self.detector_method is not blob_doh:
+            z_inds = fitted_blobs_array[:, 0].astype(int)
+            y_inds = fitted_blobs_array[:, 1].astype(int)
+            x_inds = fitted_blobs_array[:, 2].astype(int)
+
+            # radius - do not round
+            # Also I think sqrt(3) seems wrong here - should it be sqrt(2)?
+            # Or depends on dimensionality (volume or 2D)
+            #radius = np.round(fitted_blobs_array[:, 3] * np.sqrt(3))
+            radius = fitted_blobs_array[:, 3] * np.sqrt(3)
+            intensities = data_image[tuple([z_inds, y_inds, x_inds])]
+        else:
+            # DoH only works in 2D - shift columns accordingly
+            z_inds = np.zeros((fitted_blobs_array.shape[0], 1)).astype(int)
+            y_inds = fitted_blobs_array[:, 0].astype(int)
+            x_inds = fitted_blobs_array[:, 1].astype(int)
+            radius = fitted_blobs_array[:, 2]
+            intensities = data_image[tuple([y_inds, x_inds])]
 
         # construct dataframe
         spot_data = pd.DataFrame(
